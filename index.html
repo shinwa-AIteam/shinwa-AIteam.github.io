@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<link rel="shortcut icon" href="./shinwa.ico"/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>作業実績入力</title>
+<style>
+  :root { --main:#1a73e8; --border:rgba(255,255,255,.65); }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif; color:#1c2b3a;
+    min-height:100vh;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(255,255,255,.9) 0%, rgba(255,255,255,0) 45%),
+      radial-gradient(circle at 85% 15%, rgba(174,214,255,.8) 0%, rgba(174,214,255,0) 50%),
+      radial-gradient(circle at 80% 85%, rgba(200,240,255,.7) 0%, rgba(200,240,255,0) 50%),
+      linear-gradient(135deg, #b8d8f0 0%, #d6e9f8 40%, #c3e0ee 70%, #a9cbe8 100%);
+    background-attachment:fixed;
+  }
+  .container { max-width:720px; margin:24px auto; padding:0 16px 48px; }
+  .toplink-bar {
+    background:rgba(255,255,255,.35);
+    -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+    padding:10px 24px;
+    border-bottom:1px solid rgba(255,255,255,.6);
+  }
+  .toplink-bar a {
+    display:inline-flex; align-items:center; gap:6px;
+    color:#123a5c; font-size:14px; font-weight:700; text-decoration:none;
+    padding:6px 14px; border-radius:10px;
+    background:rgba(255,255,255,.55);
+    border:1px solid rgba(18,58,92,.18);
+    box-shadow:0 2px 8px rgba(90,130,170,.12);
+    transition:background .15s ease, transform .15s ease;
+  }
+  .toplink-bar a:hover { background:#ffffff; transform:translateY(-1px); }
+  header {
+    background:rgba(255,255,255,.35);
+    -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+    border-bottom:1px solid rgba(255,255,255,.6);
+    box-shadow:0 4px 24px rgba(90,130,170,.15);
+    color:#123a5c; padding:18px 24px;
+  }
+  header h1 { margin:0; font-size:20px; font-weight:700; letter-spacing:.05em;
+    text-shadow:0 1px 0 rgba(255,255,255,.7); }
+  .glass {
+    background:rgba(255,255,255,.45);
+    -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px);
+    border:1px solid var(--border);
+    border-radius:18px;
+    box-shadow:0 8px 32px rgba(70,110,150,.18), inset 0 1px 0 rgba(255,255,255,.8);
+  }
+  form { padding:26px; margin-top:22px; }
+  .field { margin-bottom:18px; }
+  label { display:block; font-weight:600; margin-bottom:6px; font-size:14px; color:#123a5c; }
+  label .req { color:#d93025; margin-left:4px; }
+  input[type=text], input[type=date], input[type=datetime-local], input[type=number], select, textarea {
+    width:100%; padding:10px 12px; font-size:15px; color:#1c2b3a;
+    background:rgba(255,255,255,.6);
+    border:1px solid rgba(255,255,255,.8);
+    border-radius:10px;
+    box-shadow:inset 0 1px 3px rgba(70,110,150,.12);
+    transition:box-shadow .2s, background .2s;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline:none; background:rgba(255,255,255,.85);
+    box-shadow:0 0 0 3px rgba(90,170,250,.35), inset 0 1px 3px rgba(70,110,150,.12);
+  }
+  textarea { min-height:80px; resize:vertical; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .actions { display:flex; gap:12px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+  button {
+    padding:12px 28px; font-size:16px; border-radius:12px; cursor:pointer; font-weight:600;
+    border:1px solid rgba(255,255,255,.5);
+    box-shadow:0 4px 14px rgba(70,110,150,.25), inset 0 1px 0 rgba(255,255,255,.4);
+    transition:filter .15s, box-shadow .15s, transform .1s;
+  }
+  button:hover:not(:disabled) { filter:brightness(1.18); box-shadow:0 6px 18px rgba(70,110,150,.3), inset 0 1px 0 rgba(255,255,255,.5); }
+  button:active:not(:disabled) { transform:translateY(1px); }
+  #submitBtn { background:linear-gradient(135deg,#3b9dff 0%,#1a73e8 100%); color:#fff; }
+  #submitBtn:disabled { background:#9e9e9e; cursor:not-allowed; }
+  #reportBtn { background:linear-gradient(135deg,#5f8fe0 0%,#4472C4 100%); color:#fff; }
+  #resetBtn { background:rgba(255,255,255,.55); color:#33506b; }
+  #msg { margin-top:16px; padding:12px 16px; border-radius:10px; display:none; font-size:14px; }
+  #msg.ok   { display:block; background:rgba(230,244,234,.75); color:#137333; border:1px solid #a8dab5; }
+  #msg.err  { display:block; background:rgba(252,232,230,.75); color:#c5221f; border:1px solid #f0b3b0; }
+  #msg.info { display:block; background:rgba(232,240,254,.75); color:#1a73e8; border:1px solid #b8d3f8; }
+  .aggregate { padding:22px 26px; margin-top:24px; }
+  .aggregate h2 { margin:0 0 8px; font-size:16px; color:#123a5c; }
+  .aggregate p { color:#3c5a74; margin:0 0 14px; font-size:14px; line-height:1.6; }
+  .aggregate .placeholder {
+    background:rgba(255,255,255,.4); color:#7a93a8; cursor:not-allowed;
+    box-shadow:none;
+  }
+</style>
+</head>
+<body>
+<div class="toplink-bar">
+  <a href="https://docs.google.com/spreadsheets/d/1RM2jozg3305R8GQhHEIyhT3lR98j-L4k4gntcYykZIk/edit?gid=0#gid=0" target="_blank" rel="noopener noreferrer">📊 デザインDBスプレッド</a>
+</div>
+<header><h1>作業実績入力フォーム</h1></header>
+<div class="container">
+
+  <!-- ==================== ① 入力フォーム ==================== -->
+  <form id="entryForm" class="glass" novalidate>
+    <div class="field">
+      <label for="anken">案件名<span class="req">※必須</span></label>
+      <input type="text" id="anken" name="案件名" required maxlength="200" placeholder="例：◯◯案件 デザイン修正">
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="date">作業日<span class="req">※必須</span></label>
+        <input type="date" id="date" name="作業日" required>
+      </div>
+      <div class="field">
+        <label for="worker">作業者<span class="req">※必須</span></label>
+        <select id="worker" name="作業者" required><option value="">（読み込み中…）</option></select>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="requester">依頼者</label>
+        <input type="text" id="requester" name="依頼者" maxlength="100" placeholder="依頼元の担当者名">
+      </div>
+      <div class="field">
+        <label for="customer">顧客名</label>
+        <select id="customer" name="顧客名"><option value="">（読み込み中…）</option></select>
+        <input type="text" id="customerFree" maxlength="100"
+               placeholder="新しい顧客名を入力（登録時にマスタへ自動追加されます）"
+               style="display:none; margin-top:6px;">
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="category">業務内容<span class="req">※必須</span></label>
+        <select id="category" name="業務内容" required><option value="">（読み込み中…）</option></select>
+        <div id="catinfo" style="margin-top:6px; font-size:0.9em; color:#444; line-height:1.5;"></div>
+      </div>
+      <div class="field">
+        <label for="count">件数<span class="req">※必須</span></label>
+        <input type="number" id="count" name="件数" required min="0" step="1" value="1">
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="start">開始日時<span class="req">※必須</span></label>
+        <input type="datetime-local" id="start" name="開始日時" required>
+      </div>
+      <div class="field">
+        <label for="end">終了日時<span class="req">※必須</span></label>
+        <input type="datetime-local" id="end" name="終了日時" required>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="note">備考</label>
+      <textarea id="note" name="備考" maxlength="1000" placeholder="特記事項があれば入力"></textarea>
+    </div>
+
+    <div class="actions">
+      <button type="submit" id="submitBtn">登録する</button>
+      <button type="button" id="resetBtn">クリア</button>
+    </div>
+    <div id="msg"></div>
+  </form>
+
+  <!-- ==================== ③ 集計出力（後日実装） ==================== -->
+  <div class="aggregate glass">
+    <h2>集計・パワポ出力</h2>
+    <p>月次レポート（グラフ・PowerPoint出力）の画面へ移動します。「月度営業1課報告」は営業1課向けの構成比グラフ＋内訳付きパワポを出力します。</p>
+    <div class="actions">
+      <button type="button" id="reportBtn">月度デザイン</button>
+      <button type="button" id="eigyo1Btn">月度営業1課報告</button>
+      <button type="button" id="ratioBtn">デザイン課作業割合</button>
+      <button type="button" class="placeholder" disabled>集計出力（準備中）</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================================
+ * 設定：GASをデプロイ後、発行されたWebアプリURLを下記に貼り付けてください
+ * 例）https://script.google.com/macros/s/AKfycb.../exec
+ * ===================================================================== */
+const CONFIG = {
+  GAS_WEBAPP_URL: "https://script.google.com/macros/s/AKfycbyP3oYVq0RM2jFzBYrrUAJTBFluGpaQyjBrPezazOfJ1jWLTJJ3IJX8r8jz6rFwTacMUg/exec"
+};
+
+const form      = document.getElementById("entryForm");
+const submitBtn = document.getElementById("submitBtn");
+const msg       = document.getElementById("msg");
+
+/* ---------- マスタ（作業者・業務内容・顧客名）をGASからJSONPで取得 ---------- */
+function loadMasters() {
+  if (!CONFIG.GAS_WEBAPP_URL || CONFIG.GAS_WEBAPP_URL.indexOf("https://") !== 0) {
+    fillSelects(null);
+    showMsg("err", "GASのWebアプリURLが未設定です。index.html 内の CONFIG.GAS_WEBAPP_URL を設定してください。");
+    return;
+  }
+  window.__onMasters = function (res) {
+    if (res && res.status === "ok") { fillSelects(res.masters); }
+    else { fillSelects(null); showMsg("err", "マスタの取得に失敗しました。"); }
+  };
+  const s = document.createElement("script");
+  s.src = CONFIG.GAS_WEBAPP_URL + "?callback=__onMasters&t=" + Date.now();
+  s.onerror = function () { fillSelects(null); showMsg("err", "マスタの取得に失敗しました。URLとデプロイ設定を確認してください。"); };
+  document.body.appendChild(s);
+}
+
+let categoryDetails = []; // [{category, unitPrice, group}]
+
+/* ---------- 顧客名：空欄選択時は自由入力テキストボックスを表示 ---------- */
+const customerSel  = document.getElementById("customer");
+const customerFree = document.getElementById("customerFree");
+function toggleCustomerFree() {
+  if (customerSel.value === "") {
+    customerFree.style.display = "block";
+  } else {
+    customerFree.style.display = "none";
+    customerFree.value = "";
+  }
+}
+customerSel.addEventListener("change", toggleCustomerFree);
+
+function fillSelects(masters) {
+  setOptions("worker",   masters ? masters.workers    : []);
+  setOptions("category", masters ? masters.categories : []);
+  setOptions("customer", masters ? masters.customers  : []);
+  // 顧客名の先頭（空欄）オプションの文言を分かりやすく
+  if (customerSel.options.length) {
+    customerSel.options[0].textContent = masters && masters.customers.length
+      ? "（空欄：新しい顧客名を直接入力）" : "（新しい顧客名を直接入力）";
+  }
+  toggleCustomerFree();
+  categoryDetails = (masters && masters.categoryDetails) ? masters.categoryDetails : [];
+  updateCatInfo();
+}
+
+/* 業務内容の選択に連動して 業務分け・業務単価・料金見込み を表示 */
+function updateCatInfo() {
+  const cat = document.getElementById("category").value;
+  const cnt = Number(document.getElementById("count").value);
+  const info = categoryDetails.find(function (d) { return d.category === cat; });
+  const el = document.getElementById("catinfo");
+  if (!info) { el.innerHTML = ""; return; }
+  const group = info.group !== "" ? info.group : "（未設定）";
+  let html = "業務分け：<b>" + group + "</b>";
+  if (info.unitPrice !== null) {
+    html += "　／　業務単価：<b>" + info.unitPrice.toLocaleString() + "円</b>";
+    if (isFinite(cnt) && cnt >= 1) {
+      html += "　／　料金見込み：<b>" + (info.unitPrice * cnt).toLocaleString() + "円</b>";
+    }
+  } else {
+    html += "　／　業務単価：（未設定）";
+  }
+  el.innerHTML = html;
+}
+document.getElementById("category").addEventListener("change", updateCatInfo);
+document.getElementById("count").addEventListener("input", updateCatInfo);
+function setOptions(id, list) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = "";
+  const blank = document.createElement("option");
+  blank.value = ""; blank.textContent = list.length ? "（選択してください）" : "（マスタ未設定）";
+  sel.appendChild(blank);
+  list.forEach(function (v) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v;
+    sel.appendChild(o);
+  });
+}
+
+/* ---------- 送信 ---------- */
+/* ---------- 月度デザイン（月次レポート）画面を開く ---------- */
+document.getElementById("reportBtn").addEventListener("click", function () {
+  if (!CONFIG.GAS_WEBAPP_URL || CONFIG.GAS_WEBAPP_URL.indexOf("https://") !== 0) {
+    showMsg("err", "GASのWebアプリURLが未設定です。");
+    return;
+  }
+  location.href = "月度デザイン.html?gas=" + encodeURIComponent(CONFIG.GAS_WEBAPP_URL);
+});
+
+/* ---------- デザイン課作業割合画面を開く ---------- */
+document.getElementById("ratioBtn").addEventListener("click", function () {
+  if (!CONFIG.GAS_WEBAPP_URL || CONFIG.GAS_WEBAPP_URL.indexOf("https://") !== 0) {
+    showMsg("err", "GASのWebアプリURLが未設定です。");
+    return;
+  }
+  location.href = "デザイン課作業割合.html?gas=" + encodeURIComponent(CONFIG.GAS_WEBAPP_URL);
+});
+
+/* ---------- 月度営業1課報告画面を開く ---------- */
+document.getElementById("eigyo1Btn").addEventListener("click", function () {
+  if (!CONFIG.GAS_WEBAPP_URL || CONFIG.GAS_WEBAPP_URL.indexOf("https://") !== 0) {
+    showMsg("err", "GASのWebアプリURLが未設定です。");
+    return;
+  }
+  location.href = "月度営業1課.html?gas=" + encodeURIComponent(CONFIG.GAS_WEBAPP_URL);
+});
+
+form.addEventListener("submit", function (e) {
+  e.preventDefault();
+  hideMsg();
+
+  // クライアント側バリデーション
+  const required = ["案件名", "作業日", "作業者", "業務内容", "件数", "開始日時", "終了日時"];
+  for (const name of required) {
+    const el = form.elements[name];
+    if (!el.value) { showMsg("err", "「" + name + "」を入力してください。"); el.focus(); return; }
+  }
+  const start = new Date(form.elements["開始日時"].value);
+  const end   = new Date(form.elements["終了日時"].value);
+  if (end <= start) { showMsg("err", "終了日時は開始日時より後にしてください。"); return; }
+  if (Number(form.elements["件数"].value) < 0) { showMsg("err", "件数は0以上で入力してください。"); return; }
+
+  submitBtn.disabled = true;
+  showMsg("info", "送信中…");
+
+  // no-cors のシンプルPOST（パラメータはURLクエリ文字列で送信）
+  const fd = new FormData(form);
+  // 顧客名が空欄で自由入力がある場合は、その値を顧客名として送信
+  const freeCustomer = customerFree.value.trim();
+  const isNewCustomer = (!fd.get("顧客名") && freeCustomer !== "");
+  if (isNewCustomer) fd.set("顧客名", freeCustomer);
+  const params = new URLSearchParams(fd);
+  fetch(CONFIG.GAS_WEBAPP_URL + "?" + params.toString(), { method: "POST", mode: "no-cors" })
+    .then(function () {
+      showMsg("ok", isNewCustomer
+        ? "登録しました。顧客名「" + freeCustomer + "」をマスタに追加しました。"
+        : "登録しました。（反映はスプレッドシート「作業記録」で確認できます）");
+      // 連続入力しやすいよう、作業者・日時以外をクリア
+      ["案件名", "依頼者", "備考"].forEach(function (n) { form.elements[n].value = ""; });
+      form.elements["件数"].value = 1;
+      customerFree.value = "";
+      // 新規顧客をプルダウンへ反映するためマスタを再読込
+      if (isNewCustomer) loadMasters();
+    })
+    .catch(function () {
+      showMsg("err", "送信に失敗しました。ネットワークとURLを確認してください。");
+    })
+    .finally(function () { submitBtn.disabled = false; });
+});
+
+document.getElementById("resetBtn").addEventListener("click", function () {
+  form.reset(); hideMsg();
+});
+
+function showMsg(type, text) { msg.className = type; msg.id = "msg"; msg.textContent = text; msg.style.display = "block"; }
+function hideMsg() { msg.style.display = "none"; }
+
+/* 初期化：作業日の初期値=今日、マスタ読み込み */
+document.getElementById("date").valueAsDate = new Date();
+loadMasters();
+</script>
+</body>
+</html>

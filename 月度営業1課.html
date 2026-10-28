@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>月度営業1課報告</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<style>
+  body { font-family: "Hiragino Sans","メイリオ",sans-serif; margin: 0; background:#f4f6f9; color:#222; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.5em; text-align:center; margin:10px 0 2px; }
+  .subtitle { text-align:center; font-size:1.05em; color:#333; margin-bottom:14px; }
+  .panel { background:#fff; border-radius:8px; padding:16px; margin-bottom:16px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .band { background:#C00000; color:#fff; font-weight:bold; text-align:center;
+          padding:8px 0; font-size:1.2em; border-radius:4px; margin:6px 0 2px; }
+  .band-sub { text-align:center; font-size:1.05em; margin:6px 0 14px; }
+  .cols { display:flex; flex-wrap:wrap; gap:20px; }
+  .col { flex:1 1 200px; min-width:200px; font-size:0.98em; line-height:1.7; }
+  .col .lbl { font-weight:bold; }
+  .col .block { margin-bottom:14px; }
+  .col ul { margin:4px 0 0; padding-left:1.2em; }
+  button { font-size:1.05em; padding:12px 24px; border:none; border-radius:6px; background:#4472C4; color:#fff; cursor:pointer; }
+  button:disabled { background:#aaa; cursor:default; }
+  #dlBtn:hover:not(:disabled) { background:#6FB7E8; }
+  .back { background:#888; margin-left:8px; }
+  .back:hover { background:#aaa; }
+  .actions { text-align:center; margin:18px 0; }
+  #msg { padding:10px; border-radius:6px; display:none; margin-bottom:12px; }
+  #msg.err { display:block; background:#fde8e8; color:#c00; }
+  #msg.ok  { display:block; background:#e8f6e8; color:#060; }
+  .note { font-size:.85em; color:#666; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title">月度　営業1課 報告</h1>
+  <div class="subtitle" id="subtitle"></div>
+  <div id="msg"></div>
+
+  <div class="panel" style="display:flex;align-items:center;gap:10px;padding:10px 16px;">
+    <label for="ymSel" style="font-weight:bold;">対象年月：</label>
+    <select id="ymSel" style="font-size:1em;padding:6px 10px;"></select>
+  </div>
+
+  <div class="panel">
+    <canvas id="chartMain"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="band">営業1課</div>
+    <div class="band-sub">上記構成比の内、営業1課分</div>
+    <div class="cols">
+      <div class="col" id="colDesign"></div>
+      <div class="col" id="colKamp"></div>
+      <div class="col" id="colHangNew"></div>
+      <div class="col" id="colHangFix"></div>
+    </div>
+    <p class="note">※ デザイン新規＝新規デザインＡ/Ｂ/Ｃ、デザイン修正＝デザイン修正、新規版下＝版下作成、版下修正＝版下修正（業務分け）として集計しています。</p>
+  </div>
+
+  <div class="actions">
+    <button id="dlBtn" disabled>PowerPointをダウンロード</button>
+    <button class="back" onclick="history.back()">戻る</button>
+  </div>
+</div>
+
+<script>
+const GAS = new URLSearchParams(location.search).get("gas") || "";
+const msg = document.getElementById("msg");
+function showMsg(cls, text){ msg.className = cls; msg.textContent = text; }
+
+/* ---------- 対象月（選択式） ---------- */
+function ym(d){ return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0"); }
+const now = new Date();
+let curD, CUR, curM, curY, lblCur;
+function setTarget(ymStr){
+  const p = ymStr.split("-"), y = +p[0], m = +p[1];
+  curD = new Date(y, m-1, 1);
+  CUR = ym(curD); curM = m; curY = y;
+  lblCur = y + "年" + m + "月";
+  document.getElementById("title").textContent = m + "月度　営業1課 報告";
+  document.getElementById("subtitle").textContent = lblCur + "構成比/金額";
+}
+setTarget(ym(new Date(now.getFullYear(), now.getMonth(), 1))); // 初期値は当月
+
+/* ---------- レポート集計マッピング（業務内容・業務分けの対応はここで調整） ---------- */
+const MAP = {
+  designNew: ["新規デザインＡ", "新規デザインＢ", "新規デザインＣ"], // デザイン新規
+  designFix: ["デザイン修正"],                                       // デザイン修正
+  kampGroup:  "カンプ",     // カンプ出力数（業務分け）
+  hangNewGroup: "版下作成", // 新規版下（業務分け）
+  hangFixGroup: "版下修正"  // 版下修正（業務分け）
+};
+
+/* ---------- データ取得（JSONP） ---------- */
+let DATA = null;
+function loadData(){
+  if (!GAS){ showMsg("err","GASのURLが指定されていません。入力画面の「月度営業1課報告」ボタンから開いてください。"); return; }
+  window.__onE1 = function(res){
+    if (res && res.status === "ok"){ DATA = res; buildYmSelector(); render(); }
+    else showMsg("err","データの取得に失敗しました。");
+  };
+  const s = document.createElement("script");
+  s.src = GAS + (GAS.indexOf("?")>=0?"&":"?") + "mode=eigyo1&callback=__onE1&t=" + Date.now();
+  s.onerror = function(){ showMsg("err","データの取得に失敗しました。URLとデプロイ設定を確認してください。"); };
+  document.body.appendChild(s);
+}
+
+/* ---------- 年月セレクタ ---------- */
+function buildYmSelector(){
+  const sel = document.getElementById("ymSel");
+  const keys = Object.keys(DATA.months || {});
+  const curKey = ym(new Date(now.getFullYear(), now.getMonth(), 1));
+  if (keys.indexOf(curKey) < 0) keys.push(curKey); // 当月は必ず選択可能
+  keys.sort().reverse();
+  sel.innerHTML = keys.map(k => {
+    const p = k.split("-");
+    return '<option value="'+k+'"'+(k===CUR?' selected':'')+'>'+p[0]+'年'+(+p[1])+'月</option>';
+  }).join("");
+  sel.onchange = function(){ setTarget(this.value); render(); };
+}
+
+/* ---------- 集計 ---------- */
+const fmtN = v => Number(v).toLocaleString("ja-JP");
+function monthData(m){
+  return (DATA.months && DATA.months[m]) || { groups:{}, categories:{}, kampJobs:[] };
+}
+function sumCats(mo, list){
+  let c = 0, f = 0;
+  list.forEach(k => { const e = mo.categories[k]; if (e){ c += e.count; f += e.fee; } });
+  return { count:c, fee:f };
+}
+function groupData(mo, g){ return mo.groups[g] || { count:0, fee:0 }; }
+
+function reportData(){
+  const mo = monthData(CUR);
+  const dn = sumCats(mo, MAP.designNew);
+  const df = sumCats(mo, MAP.designFix);
+  return {
+    designNew: dn,
+    designFix: df,
+    designTotal: { count: dn.count + df.count, fee: dn.fee + df.fee },
+    kamp:     groupData(mo, MAP.kampGroup),
+    kampJobs: mo.kampJobs || [],
+    hangNew:  groupData(mo, MAP.hangNewGroup),
+    hangFix:  groupData(mo, MAP.hangFixGroup)
+  };
+}
+
+/* ---------- グラフ（構成比%＝棒、金額＝折れ線） ---------- */
+const COLORS = ["#9DC3E6","#FFD966","#C6E0B4","#F4B7B4","#A9D18E","#D9D2E9","#F8CBAD","#DDEBF7","#E2EFDA","#D0CECE"];
+let chart = null;
+function render(){
+  const mo = monthData(CUR);
+  const groups = (DATA.groupOrder || []).slice();
+  Object.keys(mo.groups).forEach(g => { if (groups.indexOf(g) < 0) groups.push(g); });
+  const totalCount = groups.reduce((a,g) => a + groupData(mo,g).count, 0);
+  const pct = groups.map(g => totalCount > 0 ? +(groupData(mo,g).count / totalCount * 100).toFixed(1) : 0);
+  const fee = groups.map(g => groupData(mo,g).fee);
+
+  if (chart) chart.destroy();
+  const datasets = [
+    { type:"bar", label:"構成比（件数）", data:pct, yAxisID:"y1",
+      backgroundColor: groups.map((_,i)=>COLORS[i % COLORS.length]),
+      datalabels:{ align:"center", anchor:"center", color:"#555", font:{size:10},
+        formatter: v => v > 0 ? v.toFixed(1)+"%" : "" } },
+    { type:"line", label:"金額（円）", data:fee, yAxisID:"y2",
+      borderColor:"#ED7D31", backgroundColor:"#ED7D31", tension:0.2,
+      datalabels:{ align:"top", anchor:"end", color:"#B05000", font:{size:10},
+        formatter: v => v > 0 ? Number(v).toLocaleString() : "" } }
+  ];
+  const opts = {
+    responsive:true, aspectRatio:2.4,
+    plugins:{
+      legend:{ position:"bottom" },
+      datalabels:{ display:true },
+      tooltip:{ callbacks:{ label: c => c.dataset.yAxisID==="y1"
+        ? "構成比：" + c.parsed.y + "%" : "金額：" + Number(c.parsed.y).toLocaleString() + "円" } }
+    },
+    scales:{
+      y1:{ position:"left", beginAtZero:true, title:{display:true,text:"構成比（%）"},
+           ticks:{ callback:v=>v+"%" } },
+      y2:{ position:"right", beginAtZero:true, title:{display:true,text:"金額（円）"},
+           grid:{drawOnChartArea:false}, ticks:{ callback:v=>Number(v).toLocaleString() } }
+    }
+  };
+  if (window.ChartDataLabels) Chart.register(ChartDataLabels);
+  chart = new Chart(document.getElementById("chartMain"), { data:{ labels:groups, datasets:datasets }, options:opts });
+
+  renderCols();
+  document.getElementById("dlBtn").disabled = false;
+}
+
+/* ---------- 営業1課 内訳カラム ---------- */
+function moneyPair(label, d){
+  return '<div class="block"><span class="lbl">'+label+'：'+fmtN(d.count)+'件</span><br>金額換算：'+fmtN(d.fee)+'円</div>';
+}
+function renderCols(){
+  const r = reportData();
+  document.getElementById("colDesign").innerHTML =
+    moneyPair("デザイン新規", r.designNew) +
+    moneyPair("デザイン修正", r.designFix) +
+    moneyPair("デザイン合計", r.designTotal);
+  let kampHtml = moneyPair("カンプ出力数", r.kamp);
+  kampHtml += '<div class="block">（1回あたり10枚以上の出力依頼'+r.kampJobs.length+'点）';
+  if (r.kampJobs.length){
+    kampHtml += "<ul>" + r.kampJobs.map(j => "<li>"+j+"</li>").join("") + "</ul>";
+  }
+  kampHtml += "</div>";
+  document.getElementById("colKamp").innerHTML = kampHtml;
+  document.getElementById("colHangNew").innerHTML = moneyPair("新規版下", r.hangNew);
+  document.getElementById("colHangFix").innerHTML = moneyPair("版下修正", r.hangFix);
+}
+
+/* ---------- PowerPoint生成 ---------- */
+document.getElementById("dlBtn").addEventListener("click", async function(){
+  const btn = this;
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "⏳ 生成中...";
+  document.body.style.cursor = "wait";
+  try {
+    const pptx = new PptxGenJS();
+    pptx.defineLayout({ name:"A4L", width:11.69, height:8.27 });
+    pptx.layout = "A4L";
+    const s = pptx.addSlide();
+    const FONT = "メイリオ";
+    const W = 11.69;
+
+    // タイトル・サブタイトル
+    s.addText(curM + "月度　営業1課 報告", { x:0, y:0.12, w:W, h:0.5, align:"center",
+      fontSize:24, bold:true, fontFace:FONT });
+    s.addText(lblCur + "構成比/金額", { x:0, y:0.62, w:W, h:0.35, align:"center",
+      fontSize:13, fontFace:FONT });
+
+    // グラフ
+    const cv = document.getElementById("chartMain");
+    const imgW = 9.2, imgH = imgW * cv.height / cv.width;
+    s.addImage({ data: cv.toDataURL("image/png"), x:(W-imgW)/2, y:1.05, w:imgW, h:imgH });
+
+    // 赤帯
+    const bandY = 1.05 + imgH + 0.15;
+    s.addShape("rect", { x:0.5, y:bandY, w:W-1.0, h:0.42, fill:{ color:"C00000" } });
+    s.addText("営業1課", { x:0.5, y:bandY, w:W-1.0, h:0.42, align:"center", valign:"middle",
+      fontSize:15, bold:true, color:"FFFFFF", fontFace:FONT });
+    s.addText("上記構成比の内、営業1課分", { x:0, y:bandY+0.45, w:W, h:0.32, align:"center",
+      fontSize:12, fontFace:FONT });
+
+    // 4カラム
+    const r = reportData();
+    const colY = bandY + 0.85, colW = 2.7, colH = 8.27 - colY - 0.2;
+    const colX = [0.45, 3.3, 6.15, 9.0];
+    const pair = (label, d) => ([
+      { text: label + "：" + fmtN(d.count) + "件", options:{ bold:true, breakLine:true } },
+      { text: "金額換算：" + fmtN(d.fee) + "円", options:{ breakLine:true } }
+    ]);
+    const spacer = () => ({ text:"", options:{ breakLine:true } });
+
+    const design = pair("デザイン新規", r.designNew).concat([spacer()])
+      .concat(pair("デザイン修正", r.designFix)).concat([spacer()])
+      .concat(pair("デザイン合計", r.designTotal));
+
+    let kamp = pair("カンプ出力数", r.kamp).concat([spacer(),
+      { text:"（1回あたり10枚以上の出力依頼" + r.kampJobs.length + "点）", options:{ breakLine:true } }]);
+    r.kampJobs.forEach(j => kamp.push({ text:"・" + j, options:{ breakLine:true } }));
+
+    const hangN = pair("新規版下", r.hangNew);
+    const hangF = pair("版下修正", r.hangFix);
+
+    [design, kamp, hangN, hangF].forEach((arr, i) => {
+      s.addText(arr, { x:colX[i], y:colY, w:colW, h:colH, fontSize:11, fontFace:FONT,
+        valign:"top", lineSpacingMultiple:1.25 });
+    });
+
+    const fileName = curY + "年" + curM + "月度_営業1課報告.pptx";
+    const blob = await pptx.write("blob");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+    showMsg("ok", "PowerPoint（" + fileName + "）をダウンロードしました。");
+  } catch(e) {
+    showMsg("err", "PowerPointの生成に失敗しました：" + (e && e.message ? e.message : e));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+    document.body.style.cursor = "";
+  }
+});
+
+loadData();
+</script>
+</body>
+</html>

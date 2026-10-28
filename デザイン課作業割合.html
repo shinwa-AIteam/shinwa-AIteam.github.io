@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<link rel="shortcut icon" href="./shinwa.ico"/>
+<meta charset="UTF-8">
+<title>デザイン課作業割合</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<style>
+  body { font-family: "Meiryo", sans-serif; background:#f5f5f5; padding:20px; }
+  .container { max-width:900px; margin:0 auto; background:#fff; padding:24px;
+               border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.12); }
+  h1 { font-size:1.3em; margin:0 0 12px; }
+  .row { display:flex; gap:12px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+  select, button { padding:8px 14px; font-size:14px; border-radius:6px; border:1px solid #bbb; cursor:pointer; }
+  button.dl { background:#2e75b6; color:#fff; border:none; font-weight:bold; }
+  button.dl:hover { background:#235a8f; }
+  button.back { background:#fff; }
+  #msg { display:none; padding:10px; border-radius:6px; margin-bottom:12px; }
+  #msg.err { display:block; background:#fdecea; color:#b71c1c; }
+  #msg.info { display:block; background:#e8f1fa; color:#1a4f80; }
+  #chartBox { position:relative; height:560px; }
+  #chartTitle { text-align:center; font-size:1.25em; font-weight:bold; margin:10px 0 4px; }
+  #totalText { text-align:center; font-size:1.05em; margin:6px 0 0; color:#333; }
+  .spin { display:none; width:32px; height:32px; border:4px solid #cfe0f0; border-top-color:#2e75b6;
+          border-radius:50%; animation:sp 0.8s linear infinite; margin:14px auto; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>デザイン課作業割合（月次・PowerPoint出力）</h1>
+  <div id="msg"></div>
+  <div class="row">
+    <button class="back" onclick="history.back()">戻る</button>
+    <label>対象年月：<select id="ymSel"></select></label>
+    <button id="dlBtn" class="dl">パワポダウンロード</button>
+  </div>
+  <div id="chartTitle"></div>
+  <div id="chartBox"><canvas id="pie"></canvas></div>
+  <p id="totalText"></p>
+  <div class="spin" id="spin"></div>
+</div>
+
+<script>
+const qs = new URLSearchParams(location.search);
+const GAS = qs.get("gas") || "";
+if (!GAS) showMsg("err", "GASのURLが指定されていません。入力フォームの「デザイン課作業割合」ボタンから開いてください。");
+
+let DATA = null;
+let chart = null;
+let curYM = "";
+
+function showMsg(type, text) {
+  const m = document.getElementById("msg");
+  m.className = type; m.textContent = text;
+}
+
+/* ---------- データ取得（JSONP: mode=eigyo1 を共用。業務分け別hoursを使用） ---------- */
+function loadData() {
+  window.__onRatio = function (res) {
+    if (res && res.status === "ok") { DATA = res; buildYmSelector(); render(); }
+    else { showMsg("err", "データの取得に失敗しました。"); }
+  };
+  const s = document.createElement("script");
+  s.src = GAS + (GAS.indexOf("?") >= 0 ? "&" : "?") + "mode=eigyo1&callback=__onRatio&t=" + Date.now();
+  s.onerror = function () { showMsg("err", "データの取得に失敗しました。URLとデプロイ設定を確認してください。"); };
+  document.body.appendChild(s);
+}
+
+/* ---------- 対象年月セレクタ ---------- */
+function buildYmSelector() {
+  const sel = document.getElementById("ymSel");
+  const now = new Date();
+  const curYMStr = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+  const keys = Object.keys(DATA.months).sort().reverse();
+  const list = keys.includes(curYMStr) ? keys : [curYMStr].concat(keys);
+  sel.innerHTML = "";
+  list.forEach(function (ym) {
+    const o = document.createElement("option");
+    o.value = ym; o.textContent = ym.replace("-", "年") + "月";
+    sel.appendChild(o);
+  });
+  sel.value = curYMStr;
+  sel.addEventListener("change", render);
+}
+
+/* ---------- 業務分けの色（サンプル資料に合わせた配色） ---------- */
+const COLORS = {
+  "デザイン":  "#0085C7",
+  "カンプ":    "#F05133",
+  "版下作成":  "#C07AB5",
+  "版下修正":  "#F5A623",
+  "社内案件":  "#2E4B8F"
+};
+const FALLBACK = ["#9DC3E6","#FFD966","#C6E0B4","#F4B7B4","#A9D18E","#D9D2E9"];
+
+function round2(v) { return Math.round(v * 100) / 100; }
+function round1(v) { return Math.round(v * 10) / 10; }
+
+/* ---------- 描画 ---------- */
+function render() {
+  curYM = document.getElementById("ymSel").value;
+  const ymData = DATA.months[curYM] || { groups: {} };
+  const order = DATA.groupOrder || [];
+  const groups = order.filter(function (g) { return ymData.groups[g]; });
+  Object.keys(ymData.groups).forEach(function (g) {
+    if (groups.indexOf(g) < 0) groups.push(g);
+  });
+
+  // GASのhours（時間）を分に換算して表示
+  const minsArr = groups.map(function (g) { return round1((ymData.groups[g].hours || 0) * 60); });
+  const totalMins = round1(minsArr.reduce(function (a, b) { return a + b; }, 0));
+
+  const y = Number(curYM.split("-")[0]), m = Number(curYM.split("-")[1]);
+  document.getElementById("chartTitle").textContent = "デザイン課作業割合";
+  document.getElementById("totalText").textContent =
+    y + "年" + m + "月度　作業時間合計：" + totalMins.toLocaleString() + " 分";
+
+  if (chart) chart.destroy();
+  const ctx = document.getElementById("pie").getContext("2d");
+  const colors = groups.map(function (g, i) { return COLORS[g] || FALLBACK[i % FALLBACK.length]; });
+
+  chart = new Chart(ctx, {
+    type: "pie",
+    data: {
+      labels: groups,
+      datasets: [{ data: minsArr, backgroundColor: colors, borderColor: "#fff", borderWidth: 2 }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      layout: { padding: 10 },
+      plugins: {
+        legend: {
+          position: "bottom",
+          labels: { boxWidth: 12, boxHeight: 12, font: { size: 13 }, padding: 14 }
+        },
+        datalabels: {
+          color: "#fff",
+          textAlign: "center",
+          font: { size: 13, weight: "bold" },
+          formatter: function (v, c) {
+            const pct = totalMins ? Math.round(v / totalMins * 100) : 0;
+            return [String(round1(v)) + "分", c.chart.data.labels[c.dataIndex], pct + "%"];
+          }
+        }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
+}
+
+/* ---------- パワポ生成（タイトル＋円グラフのみ） ---------- */
+document.getElementById("dlBtn").addEventListener("click", async function () {
+  if (!chart) return;
+  const spin = document.getElementById("spin");
+  spin.style.display = "block";
+  try {
+    await new Promise(function (r) { setTimeout(r, 400); }); // 描画完了待ち
+
+    const canvas = document.getElementById("pie");
+    const img = canvas.toDataURL("image/png");
+
+    const y = Number(curYM.split("-")[0]), m = Number(curYM.split("-")[1]);
+    const ymData = DATA.months[curYM] || { groups: {} };
+    const totalMins = round1(Object.keys(ymData.groups)
+      .reduce(function (a, g) { return a + (ymData.groups[g].hours || 0); }, 0) * 60);
+
+    const pptx = new PptxGenJS();
+    pptx.defineLayout({ name: "A4L", width: 11.69, height: 8.27 });
+    pptx.layout = "A4L";
+    const s = pptx.addSlide();
+
+    // タイトル
+    s.addText("デザイン課作業割合", {
+      x: 0, y: 0.35, w: 11.69, align: "center", fontSize: 28, bold: true, fontFace: "Meiryo"
+    });
+    s.addText(y + "年" + m + "月度　作業時間合計：" + totalMins.toLocaleString() + " 分", {
+      x: 0, y: 1.05, w: 11.69, align: "center", fontSize: 14, fontFace: "Meiryo"
+    });
+
+    // 円グラフ（中央配置）
+    const aspect = canvas.height / canvas.width;
+    const imgW = 6.8, imgH = imgW * aspect;
+    const imgX = (11.69 - imgW) / 2;
+    s.addImage({ data: img, x: imgX, y: 1.6, w: imgW, h: Math.min(imgH, 6.2) });
+
+    const blob = await pptx.write("blob");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = y + "年" + m + "月度_デザイン課作業割合.pptx";
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  } catch (err) {
+    showMsg("err", "パワポ生成に失敗しました: " + err.message);
+  } finally {
+    spin.style.display = "none";
+  }
+});
+
+loadData();
+</script>
+</body>
+</html>
